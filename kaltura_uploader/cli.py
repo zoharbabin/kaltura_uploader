@@ -172,6 +172,9 @@ def main() -> int:
 
         return 0
 
-    except Exception as exc:
-        logging.exception("An error occurred during Kaltura upload: %s", exc)
+    except (OSError, ValueError) as exc:
+        logging.exception("An error occurred during file handling or value conversion: %s", exc)
+        return 1
+    except RuntimeError as exc:
+        logging.exception("A runtime error occurred during Kaltura upload: %s", exc)
         return 1
