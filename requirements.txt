@@ -1,0 +1,8 @@
+# requirements.txt
+
+python-dotenv
+python-magic
+colorlog
+requests
+requests-toolbelt
+KalturaApiClient
