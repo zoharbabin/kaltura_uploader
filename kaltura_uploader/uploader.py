@@ -266,8 +266,8 @@ class KalturaUploader:
         upload_token_id: str,
         file_path: str,
         tags: Optional[str] = None,
-        access_control_id: Optional[int] = NotImplemented,
-        conversion_profile_id: Optional[int] = NotImplemented
+        access_control_id: Optional[int] = 0,
+        conversion_profile_id: Optional[int] = 0
     ) -> str:
         """
         Creates a Kaltura entry (MediaEntry, DocumentEntry, or DataEntry)
@@ -318,7 +318,7 @@ class KalturaUploader:
         logging.info("Successfully created Kaltura %s entry: %s", entry_type, entry_id)
         return entry_id
 
-    def _create_media_entry(self, upload_token_id: str, file_name: str, tags: Optional[str], access_control_id: Optional[int] = NotImplemented, conversion_profile_id: Optional[int] = NotImplemented) -> str:
+    def _create_media_entry(self, upload_token_id: str, file_name: str, tags: Optional[str], access_control_id: Optional[int] = 0, conversion_profile_id: Optional[int] = 0) -> str:
         """
         Create a KalturaMediaEntry using 'media' service and 'addFromUploadedFile'.
         By default, we set 'mediaType=1' (video). You can refine logic based on extension if needed.
@@ -350,7 +350,7 @@ class KalturaUploader:
             raise RuntimeError(f"Unexpected response: {data}")
         return data["id"]
 
-    def _create_document_entry(self, upload_token_id: str, file_name: str, tags: Optional[str], mime_type: str, access_control_id: Optional[int] = NotImplemented, conversion_profile_id: Optional[int] = NotImplemented) -> str:
+    def _create_document_entry(self, upload_token_id: str, file_name: str, tags: Optional[str], mime_type: str, access_control_id: Optional[int] = 0, conversion_profile_id: Optional[int] = 0) -> str:
         """
         Create a KalturaDocumentEntry using 'document' service and 'addFromUploadedFile'.
         """

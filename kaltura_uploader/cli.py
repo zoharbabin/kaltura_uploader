@@ -23,13 +23,13 @@ def main() -> int:
     parser.add_argument(
         "--access_control_id", 
         type=int, 
-        default=NotImplemented,
+        default=0,
         help="Access control ID to apply on the created entry."
     )
     parser.add_argument(
         "--conversion_profile_id", 
         type=int, 
-        default=NotImplemented,
+        default=0,
         help="Conversion Profile ID to apply on the created entry."
     )
     parser.add_argument(
