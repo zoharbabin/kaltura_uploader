@@ -1,4 +1,4 @@
-# cli.py
+# kaltura_uploader/cli.py
 
 import os
 import argparse
@@ -7,9 +7,12 @@ from typing import Optional
 
 from dotenv import load_dotenv  # Import load_dotenv from python-dotenv
 
-from kaltura_uploader import KalturaUploader, configure_logging
+from .uploader import KalturaUploader
+from .logging_config import configure_logging
+
 
 def main() -> int:
+    """Entry point for the kaltura_uploader CLI."""
     # Load environment variables from .env file
     load_dotenv()  # This reads the .env file and sets the environment variables
 
@@ -17,9 +20,20 @@ def main() -> int:
         description="Upload a file to Kaltura, create the correct entry type (Media/Document/Data), and log results."
     )
     parser.add_argument("file_path", type=str, help="Path to the file to upload.")
-    parser.add_argument("access_control_id", type=int, help="Access control ID (not currently used).")
     parser.add_argument(
-        "dl_url_extra_params",
+        "--access_control_id", 
+        type=int, 
+        default=NotImplemented,
+        help="Access control ID to apply on the created entry."
+    )
+    parser.add_argument(
+        "--conversion_profile_id", 
+        type=int, 
+        default=NotImplemented,
+        help="Conversion Profile ID to apply on the created entry."
+    )
+    parser.add_argument(
+        "--dl_url_extra_params",
         type=str,
         nargs="?",
         default="",
@@ -138,8 +152,9 @@ def main() -> int:
         entry_id = uploader.create_kaltura_entry(
             upload_token_id,
             file_path=args.file_path,
-            dl_url_extra_params=args.dl_url_extra_params,
-            tags=args.tags
+            tags=args.tags,
+            access_control_id=args.access_control_id,
+            conversion_profile_id=args.conversion_profile_id
         )
 
         # Optionally assign category
@@ -160,6 +175,3 @@ def main() -> int:
     except Exception as exc:
         logging.exception("An error occurred during Kaltura upload: %s", exc)
         return 1
-
-if __name__ == "__main__":
-    raise SystemExit(main())

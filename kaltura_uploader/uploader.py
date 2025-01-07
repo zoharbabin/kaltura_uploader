@@ -95,12 +95,12 @@ class KalturaUploader:
         config = KalturaConfiguration(self.partner_id)
         config.serviceUrl = KALTURA_SERVICE_URL
         client = KalturaClient(config)
-        client.setClientTag("static_files_uploader")
+        client.setClientTag("kaltura_cli_file_uploader")
 
         # Start admin session
         ks = client.session.start(
             self.admin_secret,
-            "static_files_uploader",
+            "kaltura_cli_file_uploader",
             KalturaSessionType.ADMIN,
             self.partner_id
         )
@@ -265,8 +265,9 @@ class KalturaUploader:
         self,
         upload_token_id: str,
         file_path: str,
-        dl_url_extra_params: str = "",
-        tags: Optional[str] = None
+        tags: Optional[str] = None,
+        access_control_id: Optional[int] = NotImplemented,
+        conversion_profile_id: Optional[int] = NotImplemented
     ) -> str:
         """
         Creates a Kaltura entry (MediaEntry, DocumentEntry, or DataEntry)
@@ -307,17 +308,17 @@ class KalturaUploader:
             mime_type = 'application/octet-stream'  # Default MIME type
 
         if entry_type == "media":
-            entry_id = self._create_media_entry(upload_token_id, file_name, tags)
+            entry_id = self._create_media_entry(upload_token_id, file_name, tags, access_control_id, conversion_profile_id)
         elif entry_type == "document":
-            entry_id = self._create_document_entry(upload_token_id, file_name, tags, mime_type)
+            entry_id = self._create_document_entry(upload_token_id, file_name, tags, mime_type, access_control_id, conversion_profile_id)
         else:
             # Default fallback: DataEntry
-            entry_id = self._create_data_entry(upload_token_id, file_name, tags)
+            entry_id = self._create_data_entry(upload_token_id, file_name, tags, access_control_id)
 
         logging.info("Successfully created Kaltura %s entry: %s", entry_type, entry_id)
         return entry_id
 
-    def _create_media_entry(self, upload_token_id: str, file_name: str, tags: Optional[str]) -> str:
+    def _create_media_entry(self, upload_token_id: str, file_name: str, tags: Optional[str], access_control_id: Optional[int] = NotImplemented, conversion_profile_id: Optional[int] = NotImplemented) -> str:
         """
         Create a KalturaMediaEntry using 'media' service and 'addFromUploadedFile'.
         By default, we set 'mediaType=1' (video). You can refine logic based on extension if needed.
@@ -332,6 +333,10 @@ class KalturaUploader:
             "ks": self.client.getKs(),
             "format": 1,  # JSON
         }
+        if access_control_id > 0:
+            payload["mediaEntry:accessControlId"] = access_control_id
+        if conversion_profile_id > 0:
+            payload["mediaEntry:conversionProfileId"] = conversion_profile_id
         if tags:
             payload["mediaEntry:tags"] = tags
 
@@ -345,7 +350,7 @@ class KalturaUploader:
             raise RuntimeError(f"Unexpected response: {data}")
         return data["id"]
 
-    def _create_document_entry(self, upload_token_id: str, file_name: str, tags: Optional[str], mime_type: str) -> str:
+    def _create_document_entry(self, upload_token_id: str, file_name: str, tags: Optional[str], mime_type: str, access_control_id: Optional[int] = NotImplemented, conversion_profile_id: Optional[int] = NotImplemented) -> str:
         """
         Create a KalturaDocumentEntry using 'document' service and 'addFromUploadedFile'.
         """
@@ -361,6 +366,10 @@ class KalturaUploader:
             "ks": self.client.getKs(),
             "format": 1,
         }
+        if access_control_id > 0:
+            payload["documentEntry:accessControlId"] = access_control_id
+        if conversion_profile_id > 0:
+            payload["documentEntry:conversionProfileId"] = conversion_profile_id
         if tags:
             payload["documentEntry:tags"] = tags
 
@@ -374,7 +383,7 @@ class KalturaUploader:
             raise RuntimeError(f"Unexpected response: {data}")
         return data["id"]
 
-    def _create_data_entry(self, upload_token_id: str, file_name: str, tags: Optional[str]) -> str:
+    def _create_data_entry(self, upload_token_id: str, file_name: str, tags: Optional[str], access_control_id: Optional[int] = NotImplemented) -> str:
         """
         Create a KalturaDataEntry (e.g., for arbitrary file types).
         """
@@ -389,6 +398,8 @@ class KalturaUploader:
             "ks": self.client.getKs(),
             "format": 1,  # JSON
         }
+        if access_control_id > 0:
+            payload["entry:accessControlId"] = access_control_id
         if tags:
             payload["entry:tags"] = tags
 
