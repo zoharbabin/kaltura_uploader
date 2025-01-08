@@ -6,3 +6,4 @@ colorlog
 requests
 requests-toolbelt
 KalturaApiClient
+lxml
