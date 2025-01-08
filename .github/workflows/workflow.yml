@@ -44,6 +44,11 @@ jobs:
     needs: [ test ]
     runs-on: ubuntu-latest
     # environment: pypi   # (Uncomment if you use a named environment)
+    permissions:
+      # Provide the OIDC token for PyPI
+      id-token: write
+      # You may also need read access to the repo content if your step checks out code
+      contents: read
 
     steps:
       - name: Check out code
