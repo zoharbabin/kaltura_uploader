@@ -31,6 +31,10 @@ except ImportError:
         "python-magic is not installed. Falling back to extension-based MIME guess (less reliable)."
     )
 
+class TokenNotFinalizedError(Exception):
+    """Raised when the Kaltura upload token fails to reach FULL_UPLOAD within the allowed attempts."""
+    pass
+
 class KalturaUploader:
     """
     Handles file uploads to Kaltura via chunked uploading with optional adaptive chunk size.
@@ -159,6 +163,8 @@ class KalturaUploader:
         with open(file_path, "rb") as infile:
             while offset < file_size:
                 chunk = infile.read(self.chunk_size_bytes)
+                if not chunk:  # Reached EOF earlier than expected
+                    break
                 is_final_chunk = (offset + len(chunk)) >= file_size
 
                 start_time = time.time()
@@ -193,7 +199,7 @@ class KalturaUploader:
 
         return self.client.uploadToken.add(token)
 
-    @retry((requests.exceptions.RequestException, RuntimeError), max_attempts=5)
+    @retry((requests.exceptions.RequestException,), max_attempts=5)
     def _upload_chunk(
         self,
         upload_token_id: str,
@@ -228,14 +234,37 @@ class KalturaUploader:
         )
         response.raise_for_status()
 
-    @retry((RuntimeError,), max_attempts=5)
     def _finalize_upload_token(self, upload_token_id: str, file_size: int) -> None:
         """
         Poll until the token is FULL_UPLOAD or fail after several attempts.
+        Uses a simple exponential backoff (1s, 2s, 4s, ...)
         """
-        token = self.client.uploadToken.get(upload_token_id)
-        if not self._validate_upload_token_status(token, file_size):
-            raise RuntimeError(f"Upload token {upload_token_id} not finalized yet.")
+        import time
+
+        max_attempts = 5
+        delay = 1.0  # seconds
+
+        for attempt in range(1, max_attempts + 1):
+            token = self.client.uploadToken.get(upload_token_id)
+            if self._validate_upload_token_status(token, file_size):
+                # If it's FULL_UPLOAD, we're done
+                return
+
+            # Otherwise, if we haven't reached max attempts, sleep and retry
+            if attempt < max_attempts:
+                if self.verbose:
+                    logging.debug(
+                        "Upload token %s is not FULL_UPLOAD on attempt %d/%d; "
+                        "waiting %.1fs before next check...",
+                        upload_token_id, attempt, max_attempts, delay
+                    )
+                time.sleep(delay)
+                delay *= 2.0  # Exponential backoff
+
+        # If we exhaust all attempts, raise an error
+        raise TokenNotFinalizedError(
+            f"Upload token {upload_token_id} not finalized after {max_attempts} attempts."
+        )
 
     def _validate_upload_token_status(self, upload_token, file_size: int) -> bool:
         """
