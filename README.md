@@ -21,6 +21,7 @@
   - [Quick Example](#quick-example)
   - [Advanced Example](#advanced-example)
 - [Logging and Security](#logging-and-security)
+- [Error Handling](#error-handling)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -51,9 +52,14 @@
 6. **Category Assignment**  
    - Optionally assigns the uploaded file to specific Kaltura categories.
 
-7. **Rich Logging**  
+7. **Rich Logging**
    - Dual-mode logging to console (with optional color via `colorlog`) and JSON files for easy log ingestion.
    - Scrubs sensitive Kaltura session tokens from all logs to prevent accidental leakage.
+
+8. **Intelligent Error Handling**
+   - Detects file type restrictions in Kaltura account settings
+   - Provides clear error messages when uploads fail due to restricted file types
+   - Returns specific exit codes for different error types
 
 ---
 
@@ -296,7 +302,7 @@ print("Direct Download URL:", dl_url)
 
 ```python
 import os
-from kaltura_uploader import KalturaUploader, configure_logging
+from kaltura_uploader import KalturaUploader, configure_logging, FileTypeRestrictedError
 
 # Suppose you store your credentials in environment variables or .env
 partner_id = int(os.getenv("KALTURA_PARTNER_ID", "12345"))
@@ -332,6 +338,9 @@ try:
 
     direct_url = uploader.get_direct_serve_url(entry_id, os.path.basename(file_path))
     print(f"Successfully uploaded! Entry ID: {entry_id}\nDirect URL: {direct_url}")
+except FileTypeRestrictedError as e:
+    print(f"File type restriction error: {e}")
+    print("Please check your Kaltura account settings to allow this file type.")
 except Exception as e:
     print(f"An error occurred: {e}")
 ```
@@ -340,12 +349,33 @@ except Exception as e:
 
 ## Logging and Security
 
-1. **Dual Logging**  
+1. **Dual Logging**
    - Writes human-readable logs to the console (with optional coloring via `colorlog`) and JSON logs to a specified file (defaults to `kaltura_upload.log`).
 
-2. **Scrubbing Kaltura Sessions**  
-   - The API admin secret is excluded from the log.  
+2. **Scrubbing Kaltura Sessions**
+   - The API admin secret is excluded from the log.
    - The Kaltura session token (`ks`) is automatically replaced with `ks=<REDACTED>` in all log messages to prevent accidental credential leakage.
+
+---
+
+## Error Handling
+
+The tool provides comprehensive error handling with specific exit codes and clear error messages:
+
+1. **File Type Restrictions**
+   - Detects when a file type is restricted by Kaltura account settings
+   - Provides a clear error message with the file extension and MIME type
+   - Returns exit code `2` to indicate a file type restriction error
+
+2. **Exit Codes**
+   - `0`: Success - File was uploaded and entry was created successfully
+   - `1`: General error - File handling, value conversion, or runtime error
+   - `2`: File type restriction - The file type is restricted by Kaltura account settings
+
+3. **Common Error Scenarios**
+   - **File Type Restrictions**: Some Kaltura accounts restrict certain file types (e.g., HTML, executable files). The tool will detect this and provide a clear message suggesting to check account settings.
+   - **Network Issues**: The tool includes retry mechanisms for transient network failures.
+   - **Invalid Credentials**: Clear error messages when partner ID or admin secret are invalid.
 
 ---
 

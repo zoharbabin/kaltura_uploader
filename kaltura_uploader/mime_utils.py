@@ -1,6 +1,5 @@
 # kaltura_uploader/mime_utils.py
 
-import os
 import logging
 import mimetypes
 from KalturaClient.Plugins.Document import KalturaDocumentType
@@ -18,19 +17,25 @@ def guess_kaltura_entry_type(file_path: str) -> str:
     """
     Determine the Kaltura entry type (media, document, or data) using MIME detection.
     
-    1) If python-magic is installed, detect the MIME type by reading the file content (most accurate).
-    2) Otherwise, fallback to mimetypes.guess_type() which relies on file extension.
-    3) Map known MIME types to:
-       - media (image/*, audio/*, video/*)
-       - document (application/pdf, application/x-shockwave-flash, application/msword, etc.)
-       - data (all else)
+    Maps known MIME types to:
+    - media (image/*, audio/*, video/*)
+    - document (application/pdf, application/x-shockwave-flash, application/msword, etc.)
+    - data (all else)
     """
     if HAS_PYTHON_MAGIC:
         try:
             # Use python-magic to detect MIME type from file content
             mime_type = magic.from_file(file_path, mime=True)
-        except Exception as e:
-            logging.warning("python-magic failed to detect MIME type: %s. Falling back to mimetypes.", e)
+        except (IOError, FileNotFoundError) as e:
+            logging.warning("Cannot read file for MIME detection: %s. Falling back to mimetypes.", e)
+            mime_type, _ = mimetypes.guess_type(file_path, strict=False)
+        except magic.MagicException as e:
+            logging.warning("Magic library error during MIME detection: %s. Falling back to mimetypes.", e)
+            mime_type, _ = mimetypes.guess_type(file_path, strict=False)
+        except Exception as e:  # pylint: disable=broad-except
+            # Still catch unexpected exceptions but with more specific logging
+            logging.warning("Unexpected error during MIME detection: %s (%s). Falling back to mimetypes.",
+                          e, type(e).__name__)
             mime_type, _ = mimetypes.guess_type(file_path, strict=False)
     else:
         # Fallback to extension-based detection

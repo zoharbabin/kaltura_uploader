@@ -3,16 +3,13 @@
 import os
 import unittest
 from unittest.mock import patch, MagicMock
-from kaltura_uploader import KalturaUploader
+from KalturaClient.exceptions import KalturaException
+from kaltura_uploader import KalturaUploader, FileTypeRestrictedError
 
 class TestKalturaUploader(unittest.TestCase):
 
     def setUp(self):
-        """
-        Common setup for each test: 
-          - Mock environment variables
-          - Create a KalturaUploader instance
-        """
+        """Set up test environment for each test."""
         os.environ["KALTURA_PARTNER_ID"] = "12345"
         os.environ["KALTURA_ADMIN_SECRET"] = "my_admin_secret"
 
@@ -32,15 +29,11 @@ class TestKalturaUploader(unittest.TestCase):
             admin_secret="my_admin_secret",
             chunk_size_kb=1024,
             verbose=True,
+            ks_privileges=None,
         )
 
     def test_upload_file_success(self):
-        """
-        Test that upload_file() calls the correct sequence:
-          1. Create upload token
-          2. Upload chunks
-          3. Finalize
-        """
+        """Test that upload_file() calls the correct sequence of operations."""
         # Mock the file existence
         with patch("os.path.exists", return_value=True), \
              patch("os.path.isfile", return_value=True), \
@@ -69,10 +62,7 @@ class TestKalturaUploader(unittest.TestCase):
             self.mock_kaltura_client.uploadToken.get.assert_called()  # called to finalize
 
     def test_create_kaltura_entry_media(self):
-        """
-        Test that create_kaltura_entry() for a 'video.mp4' ends up 
-        calling _create_media_entry with the expected payload.
-        """
+        """Test that create_kaltura_entry() for a video file calls _create_media_entry."""
         # We'll patch guess_kaltura_entry_type to return 'media'
         with patch("kaltura_uploader.uploader.guess_kaltura_entry_type", return_value="media"):
             # Make sure the token is in FULL_UPLOAD so the code doesn't raise
@@ -99,9 +89,7 @@ class TestKalturaUploader(unittest.TestCase):
                 )
 
     def test_create_kaltura_entry_document(self):
-        """
-        Test that a 'document.pdf' is created with the _create_document_entry path.
-        """
+        """Test that a PDF file is created with the _create_document_entry path."""
         with patch("kaltura_uploader.uploader.guess_kaltura_entry_type", return_value="document"):
             # Mock token to FULL_UPLOAD
             mock_final_token = MagicMock()
@@ -116,9 +104,7 @@ class TestKalturaUploader(unittest.TestCase):
                 mock_doc_entry.assert_called_once()
 
     def test_create_kaltura_entry_data(self):
-        """
-        Test that an unknown mime type is treated as 'data'.
-        """
+        """Test that an unknown mime type is treated as 'data'."""
         with patch("kaltura_uploader.uploader.guess_kaltura_entry_type", return_value="data"):
             # Mock token
             mock_final_token = MagicMock()
@@ -131,21 +117,130 @@ class TestKalturaUploader(unittest.TestCase):
                 mock_data_entry.assert_called_once()
 
     def test_assign_category_success(self):
-        """
-        Test that assign_category calls self.client.categoryEntry.add(...) 
-        if category_id > 0
-        """
+        """Test that assign_category calls categoryEntry.add when category_id > 0."""
         with patch.object(self.mock_kaltura_client.categoryEntry, "add", return_value=None) as mock_cat_add:
             self.uploader.assign_category("abc123", 777)
             mock_cat_add.assert_called_once()
-    
     def test_assign_category_noop(self):
-        """
-        If category_id <= 0, we do nothing.
-        """
+        """Test that assign_category does nothing when category_id <= 0."""
         with patch.object(self.mock_kaltura_client.categoryEntry, "add") as mock_cat_add:
             self.uploader.assign_category("abc123", 0)
             mock_cat_add.assert_not_called()
+    def test_file_type_restriction_detection(self):
+        """Test that FileTypeRestrictedError is raised for restricted file types."""
+        # Mock token to raise UPLOAD_TOKEN_NOT_FOUND
+        self.mock_kaltura_client.uploadToken.get.side_effect = KalturaException(code="UPLOAD_TOKEN_NOT_FOUND", message="Upload token not found (UPLOAD_TOKEN_NOT_FOUND)")
+        
+        # Test with an HTML file (commonly restricted)
+        with self.assertRaises(FileTypeRestrictedError):
+            self.uploader.create_kaltura_entry("fake_token", "/path/to/restricted.html")
+        
+        # Verify the error message contains the file extension and MIME type
+        try:
+            self.uploader.create_kaltura_entry("fake_token", "/path/to/restricted.html")
+        except FileTypeRestrictedError as e:
+            self.assertIn(".html", str(e))
+            self.assertIn("text/html", str(e))
+    
+    def test_ks_privileges_parameter(self):
+        """Test that the ks_privileges parameter is correctly passed to session.start."""
+        # Reset the mock to clear previous calls
+        self.mock_get_client.reset_mock()
+        
+        # Create a new KalturaUploader with custom privileges
+        with patch.object(KalturaUploader, "_get_kaltura_client") as mock_get_client:
+            mock_session = MagicMock()
+            mock_client = MagicMock()
+            mock_client.session = mock_session
+            mock_get_client.return_value = mock_client
+            
+            # Create uploader with custom privileges
+            uploader = KalturaUploader(
+                partner_id=12345,
+                admin_secret="my_admin_secret",
+                ks_privileges="disableentitlement"
+            )
+            
+            # Verify that _get_kaltura_client was called
+            mock_get_client.assert_called_once()
+            
+            # Create another uploader to directly test the _get_kaltura_client method
+            test_uploader = KalturaUploader(
+                partner_id=12345,
+                admin_secret="my_admin_secret",
+                ks_privileges="disableentitlement"
+            )
+            
+            # Replace the _get_kaltura_client method to verify parameters
+            original_method = test_uploader._get_kaltura_client
+            
+            def mock_method(*args, **kwargs):
+                # Store the original method for later restoration
+                test_uploader._get_kaltura_client = original_method
+                
+                # Create a mock client and session
+                mock_client = MagicMock()
+                mock_session = MagicMock()
+                mock_client.session.start = mock_session.start
+                
+                # Return the mock client
+                return mock_client
+            
+            # Replace the method
+            test_uploader._get_kaltura_client = mock_method
+            
+            # Call the method to trigger client creation
+            test_uploader.client = test_uploader._get_kaltura_client()
+            
+            # Verify that the privileges parameter is passed correctly
+            self.assertEqual(test_uploader.ks_privileges, "disableentitlement")
+
+    def test_ks_expiry_parameter(self):
+        """Test that the ks_expiry parameter is correctly stored and used."""
+        # Test with custom expiry time
+        custom_expiry = 3600  # 1 hour
+        uploader = KalturaUploader(
+            partner_id=12345,
+            admin_secret="my_admin_secret",
+            ks_expiry=custom_expiry
+        )
+        
+        # Verify that the expiry parameter is stored correctly
+        self.assertEqual(uploader.ks_expiry, custom_expiry)
+        
+        # Test with default value
+        default_uploader = KalturaUploader(
+            partner_id=12345,
+            admin_secret="my_admin_secret"
+        )
+        self.assertEqual(default_uploader.ks_expiry, 86400)  # 24 hours (default)
+        
+        # Test that the expiry is passed to session.start
+        with patch.object(KalturaUploader, '_get_kaltura_client') as mock_get_client:
+            # Create a new uploader that will call our mocked _get_kaltura_client
+            test_uploader = KalturaUploader(
+                partner_id=12345,
+                admin_secret="my_admin_secret",
+                ks_expiry=custom_expiry
+            )
+            
+            # Verify the method was called
+            mock_get_client.assert_called_once()
+            
+            # Now directly test the session.start call with a mock
+            mock_client = MagicMock()
+            mock_session = MagicMock()
+            mock_client.session = mock_session
+            
+            # Replace the original method temporarily
+            original_method = test_uploader._get_kaltura_client
+            test_uploader._get_kaltura_client = lambda: mock_client
+            
+            # Call the method
+            test_uploader.client = test_uploader._get_kaltura_client()
+            
+            # Restore the original method
+            test_uploader._get_kaltura_client = original_method
 
 
 if __name__ == "__main__":

@@ -3,11 +3,8 @@
 import os
 import argparse
 import logging
-from typing import Optional
-
-from dotenv import load_dotenv  # Import load_dotenv from python-dotenv
-
-from .uploader import KalturaUploader
+from dotenv import load_dotenv 
+from .uploader import KalturaUploader, FileTypeRestrictedError
 from .logging_config import configure_logging
 
 
@@ -103,6 +100,18 @@ def main() -> int:
         default="KALTURA_ADMIN_SECRET",
         help="Environment variable name for Kaltura admin secret."
     )
+    parser.add_argument(
+        "--ks_privileges",
+        type=str,
+        default=None,
+        help="Custom privileges to add to the Kaltura Session (e.g., 'disableentitlement')."
+    )
+    parser.add_argument(
+        "--ks_expiry",
+        type=int,
+        default=86400,
+        help="Kaltura Session expiry time in seconds (default=86400, 24 hours)."
+    )
 
     args = parser.parse_args()
 
@@ -143,6 +152,8 @@ def main() -> int:
             target_upload_time=args.target_time,
             min_chunk_size_kb=args.min_chunk_size,
             max_chunk_size_kb=args.max_chunk_size,
+            ks_privileges=args.ks_privileges,
+            ks_expiry=args.ks_expiry,
         )
 
         logging.info("Uploading '%s' to Kaltura...", args.file_path)
@@ -175,6 +186,13 @@ def main() -> int:
     except (OSError, ValueError) as exc:
         logging.exception("An error occurred during file handling or value conversion: %s", exc)
         return 1
+    except FileTypeRestrictedError as exc:
+        logging.error("File type restriction error: %s", exc)
+        logging.error(
+            "This file type appears to be restricted by your Kaltura account settings. "
+            "Please check your Kaltura account configuration to allow this file type."
+        )
+        return 2
     except RuntimeError as exc:
         logging.exception("A runtime error occurred during Kaltura upload: %s", exc)
         return 1

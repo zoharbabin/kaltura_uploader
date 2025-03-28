@@ -3,9 +3,18 @@
 import unittest
 from unittest.mock import patch
 import mimetypes  # Import mimetypes to prevent NameError in side_effect
+import io  # For IOError
 
 from kaltura_uploader.mime_utils import guess_kaltura_entry_type, get_document_type
 from KalturaClient.Plugins.Document import KalturaDocumentType
+
+# Mock the magic.MagicException for testing
+class MagicException(Exception):
+    pass
+
+# Patch the magic module
+import sys
+sys.modules['magic'] = type('MockMagic', (), {'MagicException': MagicException})
 
 class TestMimeUtils(unittest.TestCase):
     @patch('kaltura_uploader.mime_utils.magic.from_file')
@@ -69,6 +78,27 @@ class TestMimeUtils(unittest.TestCase):
         self.assertEqual(guess_kaltura_entry_type("script.js"), "data")
         self.assertEqual(guess_kaltura_entry_type("styles.css"), "data")
         self.assertEqual(guess_kaltura_entry_type("archive.zip"), "data")
+        
+    @patch('kaltura_uploader.mime_utils.magic.from_file')
+    @patch('kaltura_uploader.mime_utils.mimetypes.guess_type')
+    def test_guess_kaltura_entry_type_exception_handling(self, mock_guess_type, mock_magic):
+        """
+        Test that specific exceptions are handled correctly in guess_kaltura_entry_type.
+        """
+        # Set up mimetypes.guess_type to return a known value
+        mock_guess_type.return_value = ("text/plain", None)
+        
+        # Test IOError handling
+        mock_magic.side_effect = IOError("File not found")
+        self.assertEqual(guess_kaltura_entry_type("nonexistent.txt"), "data")
+        
+        # Test FileNotFoundError handling
+        mock_magic.side_effect = FileNotFoundError("No such file")
+        self.assertEqual(guess_kaltura_entry_type("nonexistent.txt"), "data")
+        
+        # Test magic.MagicException handling
+        mock_magic.side_effect = MagicException("Magic library error")
+        self.assertEqual(guess_kaltura_entry_type("problematic.file"), "data")
 
     def test_get_document_type(self):
         """
